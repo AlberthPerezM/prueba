@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Generador de Arbol de Modulos</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <section class="editor" aria-label="Parametros del arbol">
+      <h1>Arbol de modulos</h1>
+
+      <label for="rootName">Nombre del tronco</label>
+      <input id="rootName" value="Implementacion de la aplicacion web-movil">
+
+      <label for="treeData">Modulos y ramas</label>
+      <textarea id="treeData" spellcheck="false">1. Gestion de campanas
+Registrar campanas
+Actualizar campanas
+
+2. Gestion de pacientes
+Registrar pacientes
+Actualizar pacientes
+Gestionar gestantes
+Registrar indicadores socioeconomicos
+Mapear participantes
+
+3. Gestion de datos clinicos
+Registrar datos clinicos
+Actualizar datos clinicos
+Registrar examenes de laboratorio
+Actualizar examenes
+Registrar diagnosticos
+
+4. Gestion de centros
+Registrar centros
+Actualizar centros
+
+5. Seguridad
+Autenticacion
+Registro de usuarios
+Actualizar contrasena
+Asignacion de roles
+Control de accesos
+
+6. Reportes
+Generar reportes
+Reportes epidemiologicos
+Reportes cuantitativos
+
+7. Conectividad
+Funcionamiento offline
+Almacenamiento local
+Sincronizacion automatica
+Conexion Bluetooth
+Captura automatica de datos</textarea>
+
+      <div class="actions">
+        <button id="drawBtn" type="button">Generar arbol</button>
+        <button class="secondary" id="downloadBtn" type="button">Descargar SVG</button>
+      </div>
+
+      <p class="hint">
+        Escribe cada modulo como una linea numerada, por ejemplo "1. Gestion de pacientes".
+        Las lineas debajo seran sus ramas. Deja una linea vacia para separar modulos.
+      </p>
+    </section>
+
+    <section class="canvas-wrap" aria-label="Vista previa">
+      <svg id="tree" role="img" aria-label="Arbol generado"></svg>
+    </section>
+  </main>
+
+  <script>
+    const svg = document.getElementById('tree');
+    const rootInput = document.getElementById('rootName');
+    const dataInput = document.getElementById('treeData');
+    const drawBtn = document.getElementById('drawBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const NS = 'http://www.w3.org/2000/svg';
+    let branchLayer = null;
+    let boxLayer = null;
+
+    function parseModules(text) {
+      const modules = [];
+      let current = null;
+
+      text.split(/\r?\n/).forEach((rawLine) => {
+        const line = rawLine.trim();
+        if (!line) return;
+
+        const moduleMatch = line.match(/^(?:[^\w\s]*\s*)?(?:epica\s*)?(\d+)[\).:\-]\s*(.+)$/i);
+        if (moduleMatch) {
+          current = { name: moduleMatch[2].trim(), items: [] };
+          modules.push(current);
+          return;
+        }
+
+        if (!current) {
+          current = { name: line, items: [] };
+          modules.push(current);
+        } else {
+          current.items.push(line.replace(/^[-*]\s*/, ''));
+        }
+      });
+
+      return modules;
+    }
+
+    function createEl(tag, attrs = {}) {
+      const el = document.createElementNS(NS, tag);
+      Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+      return el;
+    }
+
+    function estimateBox(text, kind = 'item') {
+      const words = text.split(/\s+/);
+      const lines = [];
+      let current = '';
+      const maxChars = kind === 'item' ? 17 : 16;
+
+      words.forEach((word) => {
+        const next = current ? `${current} ${word}` : word;
+        if (next.length > maxChars && current) {
+          lines.push(current);
+          current = word;
+        } else {
+          current = next;
+        }
+      });
+      if (current) lines.push(current);
+
+      const longest = Math.max(...lines.map((line) => line.length), 8);
+      return {
+        lines,
+        width: Math.max(kind === 'item' ? 112 : 124, Math.min(kind === 'item' ? 164 : 170, longest * 6.8 + 26)),
+        height: Math.max(40, lines.length * 15 + 18)
+      };
+    }
+
+    function addBox(text, x, y, kind) {
+      const box = estimateBox(text, kind);
+      const group = createEl('g', { class: `box ${kind}` });
+      const title = createEl('title');
+      title.textContent = text;
+      group.appendChild(title);
+      const color = kind === 'root' ? 'var(--trunk)' : kind === 'module' ? 'var(--module)' : 'var(--leaf)';
+      group.appendChild(createEl('rect', {
+        x: x - box.width / 2,
+        y: y - box.height / 2,
+        width: box.width,
+        height: box.height,
+        fill: color
+      }));
+
+      box.lines.forEach((line, index) => {
+        const offset = (index - (box.lines.length - 1) / 2) * 15;
+        const textNode = createEl('text', { x, y: y + offset });
+        textNode.textContent = line;
+        group.appendChild(textNode);
+      });
+
+      (boxLayer || svg).appendChild(group);
+      return box;
+    }
+
+    function addPath(points, className = 'branch') {
+      const d = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point[0]} ${point[1]}`).join(' ');
+      (branchLayer || svg).appendChild(createEl('path', { class: className, d }));
+    }
+
+    function addCurve(from, controlA, controlB, to, className = 'branch') {
+      const d = `M ${from[0]} ${from[1]} C ${controlA[0]} ${controlA[1]} ${controlB[0]} ${controlB[1]} ${to[0]} ${to[1]}`;
+      (branchLayer || svg).appendChild(createEl('path', { class: className, d }));
+    }
+
+    function pointFrom(origin, angle, distance) {
+      return [
+        origin[0] + Math.cos(angle) * distance,
+        origin[1] + Math.sin(angle) * distance
+      ];
+    }
+
+    function pointBetween(from, to, amount) {
+      return [
+        lerp(from[0], to[0], amount),
+        lerp(from[1], to[1], amount)
+      ];
+    }
+
+    function clampPoint(point, minX, maxX, minY, maxY) {
+      return [
+        Math.max(minX, Math.min(maxX, point[0])),
+        Math.max(minY, Math.min(maxY, point[1]))
+      ];
+    }
+
+    function lerp(start, end, amount) {
+      return start + (end - start) * amount;
+    }
+
+    function moduleAngles(modules) {
+      const start = Math.PI * 1.06;
+      const end = Math.PI * 1.94;
+      return modules.map((module, index) => {
+        const angle = modules.length <= 1 ? Math.PI * 1.5 : lerp(start, end, index / (modules.length - 1));
+        const sector = modules.length <= 1 ? .7 : (end - start) / Math.max(1, modules.length - 1);
+        return { module, angle, sector };
+      });
+    }
+
+    function createModuleGroup(group, rootPoint) {
+      const { module, angle, sector } = group;
+      const isCenter = angle > Math.PI * 1.38 && angle < Math.PI * 1.62;
+      const modulePoint = pointFrom(rootPoint, angle, isCenter ? 135 : 190);
+      const branchEnd = pointFrom(rootPoint, angle, isCenter ? 330 : 440);
+      const bend = pointFrom(rootPoint, angle, isCenter ? 72 : 95);
+      const labels = [{ text: module.name, kind: 'module', x: modulePoint[0], y: modulePoint[1] }];
+      const branches = [{ points: [rootPoint, bend, modulePoint, branchEnd], className: 'branch' }];
+
+      const itemCount = module.items.length;
+      module.items.forEach((item, itemIndex) => {
+        const itemProgress = itemCount <= 1 ? .5 : itemIndex / (itemCount - 1);
+        const side = itemIndex % 2 === 0 ? -1 : 1;
+        const branchPoint = pointBetween(modulePoint, branchEnd, .14 + itemProgress * .76);
+        const maxFan = Math.min(.5, sector * .56);
+        const fanStep = itemCount <= 1 ? 0 : lerp(-maxFan, maxFan, itemProgress);
+        const offshootAngle = angle + fanStep + side * .46;
+        const offshootLength = 105 + (itemIndex % 3) * 24 + Math.floor(itemIndex / 2) * 8;
+        const elbow = pointFrom(branchPoint, offshootAngle, offshootLength * .45);
+        const itemPoint = clampPoint(
+          pointFrom(branchPoint, offshootAngle, offshootLength),
+          55,
+          1145,
+          65,
+          575
+        );
+
+        branches.push({ points: [branchPoint, elbow, itemPoint], className: 'twig' });
+        labels.push({ text: item, kind: 'item', x: itemPoint[0], y: itemPoint[1] });
+      });
+
+      return { branches, labels };
+    }
+
+    function drawTree() {
+      const modules = parseModules(dataInput.value);
+      const rootName = rootInput.value.trim() || 'Proyecto';
+      const groups = moduleAngles(modules);
+      const width = 1200;
+      const height = 760;
+      const cx = width / 2;
+      const rootPoint = [cx, 560];
+
+      svg.innerHTML = '';
+      branchLayer = createEl('g', { id: 'branches' });
+      boxLayer = createEl('g', { id: 'labels' });
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      svg.style.width = '100%';
+      svg.style.height = 'auto';
+
+      svg.appendChild(createEl('ellipse', {
+        class: 'ground',
+        cx,
+        cy: 320,
+        rx: 560,
+        ry: 315
+      }));
+      svg.appendChild(branchLayer);
+      svg.appendChild(boxLayer);
+
+      addPath([[cx, height - 28], rootPoint], 'trunk-line');
+      const layout = groups.map((group) => createModuleGroup(group, rootPoint));
+      const labels = layout.flatMap((group) => group.labels);
+      layout.forEach((group) => group.branches.forEach((branch) => addPath(branch.points, branch.className)));
+      labels.forEach((label) => addBox(label.text, label.x, label.y, label.kind));
+      addBox(rootName, cx, rootPoint[1] + 74, 'root');
+    }
+
+    function downloadSvg() {
+      const clone = svg.cloneNode(true);
+      clone.setAttribute('xmlns', NS);
+      const style = document.createElementNS(NS, 'style');
+      style.textContent = `
+        :root { --ink:#182043; --branch:#090c39; --branch-soft:#090c39; --leaf:#f39aab; --module:#9bccef; --trunk:#65c7c5; }
+        .branch{fill:none;stroke:var(--branch);stroke-width:7.5;stroke-linecap:round;stroke-linejoin:round}
+        .twig{fill:none;stroke:var(--branch-soft);stroke-width:5.5;stroke-linecap:round;stroke-linejoin:round}
+        .trunk-line{fill:none;stroke:var(--branch);stroke-width:7.5;stroke-linecap:round;stroke-linejoin:round}
+        .ground{fill:#98efbb;opacity:.95}
+        .canopy-shadow{display:none}
+        .joint{display:none}
+        .box rect{rx:0;ry:0;stroke-width:0;filter:drop-shadow(2px 3px 2px rgba(31,42,55,.2))}
+        .box text{fill:var(--ink);font:700 12.4px "Segoe UI",Arial,Helvetica,sans-serif;text-anchor:middle;dominant-baseline:middle}
+      `;
+      clone.insertBefore(style, clone.firstChild);
+      const data = new XMLSerializer().serializeToString(clone);
+      const blob = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'arbol-de-modulos.svg';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    drawBtn.addEventListener('click', drawTree);
+    downloadBtn.addEventListener('click', downloadSvg);
+    dataInput.addEventListener('input', drawTree);
+    rootInput.addEventListener('input', drawTree);
+    drawTree();
+  </script>
+</body>
+</html>

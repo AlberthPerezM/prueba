@@ -1,0 +1,183 @@
+:root {
+  color-scheme: light;
+  --ink: #182043;
+  --muted: #64707d;
+  --branch: #090c39;
+  --branch-soft: #090c39;
+  --leaf: #f39aab;
+  --module: #9bccef;
+  --trunk: #65c7c5;
+  --field: #ffffff;
+  --line: #d7dde3;
+  --panel: #fbfcfd;
+  --accent: #227c6c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  background: #eef2f4;
+}
+
+.app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+}
+
+.editor {
+  height: 100vh;
+  overflow: auto;
+  padding: 22px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+h1 {
+  margin: 0 0 18px;
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+label {
+  display: block;
+  margin: 12px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 12px;
+  font: inherit;
+  background: var(--field);
+  color: var(--ink);
+}
+
+textarea {
+  min-height: 390px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  padding: 11px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+}
+
+button.secondary {
+  color: var(--ink);
+  background: #e1e8ee;
+}
+
+.hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.canvas-wrap {
+  height: 100vh;
+  overflow: auto;
+  padding: 24px;
+  display: grid;
+  place-items: start center;
+  background: #ededed;
+}
+
+#tree {
+  width: 100%;
+  max-width: 1200px;
+  min-width: 0;
+  aspect-ratio: 1200 / 760;
+  background: transparent;
+}
+
+.branch {
+  fill: none;
+  stroke: var(--branch);
+  stroke-width: 7.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.twig {
+  fill: none;
+  stroke: var(--branch-soft);
+  stroke-width: 5.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trunk-line {
+  fill: none;
+  stroke: var(--branch);
+  stroke-width: 7.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ground {
+  fill: #98efbb;
+  opacity: .95;
+}
+
+.canopy-shadow {
+  display: none;
+}
+
+.joint {
+  display: none;
+}
+
+.box rect {
+  rx: 0;
+  ry: 0;
+  stroke-width: 0;
+  filter: drop-shadow(2px 3px 2px rgba(31, 42, 55, .2));
+}
+
+.box text {
+  fill: var(--ink);
+  font-size: 12.4px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .editor {
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .canvas-wrap {
+    height: 70vh;
+  }
+}
